@@ -197,7 +197,7 @@ Wiimote 方向鍵對應左類比搖桿，支援8個方向的精確控制：
 ## 🙏 致謝
 
 - [ESP32Wiimote](https://github.com/bigw00d/ESP32Wiimote) - Wiimote 通訊函式庫
-- [switch-ESP32](https://github.com/rachman-muti/switch-ESP32) - Nintendo Switch 控制器模擬
+- [switch-ESP32](https://github.com/esp32beans/switch_ESP32) - Nintendo Switch 控制器模擬
 
 ## 📞 聯絡方式
 
