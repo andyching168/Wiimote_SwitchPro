@@ -26,6 +26,126 @@
 // --- 建立 Switch Gamepad 物件 ---
 NSGamepad Gamepad;
 
+// --- 方向鍵模式設定 ---
+bool directionalButtonMode = true;  // true: 方向鍵作為數位按鈕, false: 方向鍵作為左類比搖桿
+
+// --- 按鈕映射配置表 ---
+struct ButtonMapping {
+    uint16_t wiimoteButton;
+    uint8_t nsButton;
+};
+
+// 可編輯的按鈕映射表
+const ButtonMapping buttonMappings[] = {
+    // 主要按鈕映射
+    {BUTTON_TWO,   NSButton_A},
+    {BUTTON_ONE,   NSButton_B},
+    {BUTTON_A,     NSButton_LeftTrigger},
+    {BUTTON_B,     NSButton_RightTrigger},
+    
+    // 功能鍵映射
+    {BUTTON_PLUS,  NSButton_Plus},
+    {BUTTON_MINUS, NSButton_Minus},
+    {BUTTON_HOME,  NSButton_Home},
+    
+    // 可選按鈕映射
+    {BUTTON_Z,     NSButton_X},
+    {BUTTON_C,     NSButton_Y}
+};
+
+// 方向鍵到數位按鈕的映射配置(沒用到)
+const ButtonMapping directionalButtonMappings[] = {
+    {BUTTON_UP,    NSButton_Y},     // 暫時映射到其他按鈕，或者移除這個陣列
+    {BUTTON_DOWN,  NSButton_B},
+    {BUTTON_LEFT,  NSButton_X},
+    {BUTTON_RIGHT, NSButton_A}
+};
+
+// 方向鍵到搖桿的映射配置
+struct DirectionalMapping {
+    uint16_t wiimoteButton;
+    uint8_t xAxisValue;
+    uint8_t yAxisValue;
+    const char* description;
+};
+
+// 可編輯的方向鍵映射表
+const DirectionalMapping directionalMappings[] = {
+    {BUTTON_UP,    0,   128, "Wiimote UP -> NS LEFT"},
+    {BUTTON_DOWN,  255, 128, "Wiimote DOWN -> NS RIGHT"},
+    {BUTTON_LEFT,  128, 255, "Wiimote LEFT -> NS DOWN"},
+    {BUTTON_RIGHT, 128, 0,   "Wiimote RIGHT -> NS UP"}
+};
+
+// 取得映射表大小
+const size_t buttonMappingsCount = sizeof(buttonMappings) / sizeof(buttonMappings[0]);
+const size_t directionalMappingsCount = sizeof(directionalMappings) / sizeof(directionalMappings[0]);
+const size_t directionalButtonMappingsCount = sizeof(directionalButtonMappings) / sizeof(directionalButtonMappings[0]);
+
+/**
+ * 處理方向鍵的 D-Pad 映射
+ * @param buttons 按鈕狀態位元遮罩
+ */
+void mapDirectionalButtonsToDPad(uint16_t buttons) {
+    // 根據按下的方向鍵組合設定 D-Pad
+    bool up = buttons & BUTTON_RIGHT;
+    bool down = buttons & BUTTON_LEFT;
+    bool left = buttons & BUTTON_UP;
+    bool right = buttons & BUTTON_DOWN;
+
+    // 使用 D-Pad 函式處理方向
+    Gamepad.dPad(up, down, left, right);
+}
+
+/**
+ * 將 Wiimote 方向鍵映射到 NS 控制器的左搖桿
+ * @param buttons 按鈕狀態位元遮罩
+ */
+void mapDirectionalButtonsToAnalogStick(uint16_t buttons) {
+    // 預設搖桿在中心位置
+    uint8_t finalXAxis = 128;
+    uint8_t finalYAxis = 128;
+
+    // 根據映射表處理各個方向
+    for (size_t i = 0; i < directionalMappingsCount; i++) {
+        if (buttons & directionalMappings[i].wiimoteButton) {
+            finalXAxis = directionalMappings[i].xAxisValue;
+            finalYAxis = directionalMappings[i].yAxisValue;
+        }
+    }
+    
+    // 處理對角線情況：如果同時按下相反方向，則維持中心點
+    if ((buttons & BUTTON_UP) && (buttons & BUTTON_DOWN)) {
+        finalXAxis = 128;
+    }
+    if ((buttons & BUTTON_LEFT) && (buttons & BUTTON_RIGHT)) {
+        finalYAxis = 128;
+    }
+
+    // 設定搖桿位置
+    Gamepad.leftXAxis(finalXAxis);
+    Gamepad.leftYAxis(finalYAxis);
+    Gamepad.rightXAxis(128); // 右搖桿保持中心
+}
+
+/**
+ * 將 Wiimote 按鈕映射到 NS 控制器按鈕
+ * @param buttons 按鈕狀態位元遮罩
+ */
+void mapWiimoteButtons(uint16_t buttons) {
+    // 清除所有按鈕
+    Gamepad.releaseAll();
+
+    // 根據映射表處理按鈕
+    for (size_t i = 0; i < buttonMappingsCount; i++) {
+        if (buttons & buttonMappings[i].wiimoteButton) {
+            Gamepad.press(buttonMappings[i].nsButton);
+        }
+    }
+
+    // 注意：移除了方向鍵的重複映射，方向鍵現在只透過 D-Pad 或搖桿處理
+}
+
 void setup() {
     // 開啟 USB 功能，這是模擬控制器的關鍵
     USB.begin(); 
@@ -52,54 +172,32 @@ void loop() {
 
         // --- 開始映射 ---
 
-        // 1. **預設搖桿在中心位置**
-        // 我們先宣告兩個變數來儲存最終要設定的搖桿值
-        uint8_t finalXAxis = 128;
-        uint8_t finalYAxis = 128;
-
-        // 2. 根據按下的方向鍵，計算最終的搖桿位置
-        // Wiimote UP    -> NS LEFT
-        if (buttons & BUTTON_UP)    finalXAxis = 0;
-        // Wiimote DOWN  -> NS RIGHT
-        if (buttons & BUTTON_DOWN)  finalXAxis = 255;
-        // Wiimote LEFT  -> NS DOWN
-        if (buttons & BUTTON_LEFT)  finalYAxis = 255;
-        // Wiimote RIGHT -> NS UP
-        if (buttons & BUTTON_RIGHT) finalYAxis = 0;
-        
-        // 處理對角線情況：如果同時按下，則維持中心點
-        // (這可以防止搖桿在兩個相反方向間快速抖動)
-        if ((buttons & BUTTON_UP) && (buttons & BUTTON_DOWN)) {
-            finalXAxis = 128;
-        }
-        if ((buttons & BUTTON_LEFT) && (buttons & BUTTON_RIGHT)) {
-            finalYAxis = 128;
+        // 1. 處理方向鍵映射 - 根據模式選擇
+        if (directionalButtonMode) {
+            // 方向鍵模式：使用 D-Pad
+            mapDirectionalButtonsToDPad(buttons);
+            // 保持搖桿在中心位置
+            Gamepad.leftXAxis(128);
+            Gamepad.leftYAxis(128);
+            Gamepad.rightXAxis(128);
+        } else {
+            // 類比搖桿模式：處理方向鍵到搖桿的映射
+            if (buttons & (BUTTON_UP | BUTTON_DOWN | BUTTON_LEFT | BUTTON_RIGHT)) {
+                mapDirectionalButtonsToAnalogStick(buttons);
+            } else {
+                // 如果沒有方向鍵被按下，重設搖桿到中心
+                Gamepad.leftXAxis(128);
+                Gamepad.leftYAxis(128);
+                Gamepad.rightXAxis(128);
+            }
+            // 清除 D-Pad
+            Gamepad.dPad(NSGAMEPAD_DPAD_CENTERED);
         }
 
-        // 3. **一次性設定最終的搖桿位置**
-        Gamepad.leftXAxis(finalXAxis);
-        Gamepad.leftYAxis(finalYAxis);
-        Gamepad.rightXAxis(128); // 右搖桿保持中心
+        // 2. 處理按鈕映射
+        mapWiimoteButtons(buttons);
 
-        // 4. 清除所有按鈕，然後根據收到的狀態重新按下
-        Gamepad.releaseAll();
-
-        // 主要按鈕映射
-        if (buttons & BUTTON_TWO)   Gamepad.press(NSButton_A);
-        if (buttons & BUTTON_ONE)   Gamepad.press(NSButton_B);
-        if (buttons & BUTTON_A)     Gamepad.press(NSButton_LeftTrigger);
-        if (buttons & BUTTON_B)     Gamepad.press(NSButton_RightTrigger);
-
-        // 功能鍵映射
-        if (buttons & BUTTON_PLUS)  Gamepad.press(NSButton_Plus);
-        if (buttons & BUTTON_MINUS) Gamepad.press(NSButton_Minus);
-        if (buttons & BUTTON_HOME)  Gamepad.press(NSButton_Home);
-
-        // 可選按鈕映射
-        if (buttons & BUTTON_Z)     Gamepad.press(NSButton_X);
-        if (buttons & BUTTON_C)     Gamepad.press(NSButton_Y);
-
-        // 5. 將所有設定好的狀態透過 USB 發送給 Switch
+        // 3. 將所有設定好的狀態透過 USB 發送給 Switch
         Gamepad.loop();
     }
 }
