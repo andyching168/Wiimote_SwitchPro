@@ -30,8 +30,6 @@
 ```
 Wiimote_SwitchPro/
 ├── README.md                    # 本檔案
-├── esp32s3/                     # ESP32-S3 Arduino IDE 版本 (開發中)
-│   └── esp32s3.ino
 ├── SwitchPro_i2c/              # ESP32-S3 PlatformIO 專案 (主要版本)
 │   ├── platformio.ini          # S3 專案配置
 │   ├── src/main.cpp            # S3 主程式
@@ -49,7 +47,7 @@ Wiimote_SwitchPro/
 ## 🛠️ 硬體需求
 
 ### ESP32-S1 (Wiimote 接收端)
-- ESP32 開發板 (任何型號)
+- ESP32 開發板 (支援傳統藍芽)
 - GPIO 17/18 用於 Serial2 通訊
 
 ### ESP32-S3 (Switch 控制器端)
