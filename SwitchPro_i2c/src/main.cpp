@@ -67,34 +67,21 @@ const ButtonMapping buttonMappings[] = {
     {BUTTON_C,     NSButton_Y}
 };
 
-// 方向鍵到數位按鈕的映射配置(沒用到)
+// 方向鍵到數位按鈕的映射配置(已廢棄，保留供參考)
 const ButtonMapping directionalButtonMappings[] = {
-    {BUTTON_UP,    NSButton_Y},     // 暫時映射到其他按鈕，或者移除這個陣列
+    {BUTTON_UP,    NSButton_Y},     
     {BUTTON_DOWN,  NSButton_B},
     {BUTTON_LEFT,  NSButton_X},
     {BUTTON_RIGHT, NSButton_A}
 };
 
-// 方向鍵到搖桿的映射配置
-struct DirectionalMapping {
-    uint16_t wiimoteButton;
-    uint8_t xAxisValue;
-    uint8_t yAxisValue;
-    const char* description;
-};
-
-// 可編輯的方向鍵映射表
-const DirectionalMapping directionalMappings[] = {
-    {BUTTON_UP,    0,   128, "Wiimote UP -> NS LEFT"},
-    {BUTTON_DOWN,  255, 128, "Wiimote DOWN -> NS RIGHT"},
-    {BUTTON_LEFT,  128, 255, "Wiimote LEFT -> NS DOWN"},
-    {BUTTON_RIGHT, 128, 0,   "Wiimote RIGHT -> NS UP"}
-};
+// 注意：方向鍵到搖桿的映射現在使用8方向邏輯，不再需要映射表
+// 舊的 DirectionalMapping 結構已被新的8方向邏輯取代
 
 // 取得映射表大小
 const size_t buttonMappingsCount = sizeof(buttonMappings) / sizeof(buttonMappings[0]);
-const size_t directionalMappingsCount = sizeof(directionalMappings) / sizeof(directionalMappings[0]);
 const size_t directionalButtonMappingsCount = sizeof(directionalButtonMappings) / sizeof(directionalButtonMappings[0]);
+// 注意：directionalMappingsCount 已移除，現在使用8方向邏輯
 
 // 函式宣告
 bool captivePortal();
@@ -146,6 +133,12 @@ void handleRoot() {
     html += "<h3>📖 模式說明:</h3>";
     html += "<p><strong>方向鍵模式:</strong> Wiimote 的上下左右按鈕會對應到 Switch 的數位方向鍵 (D-Pad)</p>";
     html += "<p><strong>類比搖桿模式:</strong> Wiimote 的上下左右按鈕會對應到 Switch 的左類比搖桿</p>";
+    html += "<div style=\"margin-top: 10px; padding: 10px; background-color: #e3f2fd; border-radius: 5px;\">";
+    html += "<h4>🎯 8方向類比搖桿支援:</h4>";
+    html += "<p style=\"margin: 5px 0;\">• 單一方向: 上、下、左、右</p>";
+    html += "<p style=\"margin: 5px 0;\">• 對角線方向: 左上、右上、左下、右下</p>";
+    html += "<p style=\"margin: 5px 0;\">• 同時按下相鄰按鈕可實現精確的對角線控制</p>";
+    html += "</div>";
     html += "</div>";
     
     html += "<p><small>💡 連線資訊: " + WiFi.softAPIP().toString() + "</small></p>";
@@ -279,26 +272,65 @@ void mapDirectionalButtonsToAnalogStick(uint16_t buttons) {
     uint8_t finalXAxis = 128;
     uint8_t finalYAxis = 128;
 
-    // 根據映射表處理各個方向
-    for (size_t i = 0; i < directionalMappingsCount; i++) {
-        if (buttons & directionalMappings[i].wiimoteButton) {
-            finalXAxis = directionalMappings[i].xAxisValue;
-            finalYAxis = directionalMappings[i].yAxisValue;
-        }
+    // 檢查各個方向按鈕的狀態
+    bool up = buttons & BUTTON_RIGHT;
+    bool down = buttons & BUTTON_LEFT;
+    bool left = buttons & BUTTON_UP;
+    bool right = buttons & BUTTON_DOWN;
+
+    // 處理 8 方向映射
+    if (up && right) {
+        // 右上對角線 (Wiimote UP+RIGHT -> NS UP+RIGHT)
+        finalXAxis = 255;  // 右
+        finalYAxis = 0;    // 上
+    } else if (up && left) {
+        // 左上對角線 (Wiimote UP+LEFT -> NS UP+LEFT)
+        finalXAxis = 0;    // 左
+        finalYAxis = 0;    // 上
+    } else if (down && right) {
+        // 右下對角線 (Wiimote DOWN+RIGHT -> NS DOWN+RIGHT)
+        finalXAxis = 255;  // 右
+        finalYAxis = 255;  // 下
+    } else if (down && left) {
+        // 左下對角線 (Wiimote DOWN+LEFT -> NS DOWN+LEFT)
+        finalXAxis = 0;    // 左
+        finalYAxis = 255;  // 下
+    } else if (up) {
+        // 純上方向 (Wiimote UP -> NS UP)
+        finalXAxis = 128;  // 中心
+        finalYAxis = 0;    // 上
+    } else if (down) {
+        // 純下方向 (Wiimote DOWN -> NS DOWN)
+        finalXAxis = 128;  // 中心
+        finalYAxis = 255;  // 下
+    } else if (left) {
+        // 純左方向 (Wiimote LEFT -> NS LEFT)
+        finalXAxis = 0;    // 左
+        finalYAxis = 128;  // 中心
+    } else if (right) {
+        // 純右方向 (Wiimote RIGHT -> NS RIGHT)
+        finalXAxis = 255;  // 右
+        finalYAxis = 128;  // 中心
     }
     
-    // 處理對角線情況：如果同時按下相反方向，則維持中心點
-    if ((buttons & BUTTON_UP) && (buttons & BUTTON_DOWN)) {
-        finalXAxis = 128;
+    // 處理相反方向同時按下的情況：維持中心點
+    if (up && down) {
+        finalYAxis = 128;  // Y軸回到中心
     }
-    if ((buttons & BUTTON_LEFT) && (buttons & BUTTON_RIGHT)) {
-        finalYAxis = 128;
+    if (left && right) {
+        finalXAxis = 128;  // X軸回到中心
     }
 
     // 設定搖桿位置
     Gamepad.leftXAxis(finalXAxis);
     Gamepad.leftYAxis(finalYAxis);
     Gamepad.rightXAxis(128); // 右搖桿保持中心
+    
+    // 除錯輸出（可選，用於測試）
+    if (buttons & (BUTTON_UP | BUTTON_DOWN | BUTTON_LEFT | BUTTON_RIGHT)) {
+        Serial.printf("8-Way Analog: U:%d D:%d L:%d R:%d -> X:%d Y:%d\n", 
+                     up, down, left, right, finalXAxis, finalYAxis);
+    }
 }
 
 /**
